@@ -13,6 +13,27 @@
     </header>
 
     <main>
+      <section id="auth-container">
+        <h3>Sign In</h3>
+        <form id="auth-form">
+          <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" required autocomplete="username" />
+          </div>
+          <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" required autocomplete="current-password" />
+          </div>
+          <div class="form-group">
+            <label for="otp-code">Authenticator code (teachers/admins):</label>
+            <input type="text" id="otp-code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" />
+          </div>
+          <button type="submit">Sign In</button>
+          <button type="button" id="logout-button" class="secondary-button hidden">Sign Out</button>
+        </form>
+        <div id="auth-message" class="hidden" role="status"></div>
+      </section>
+
       <section id="activities-container">
         <h3>Available Activities</h3>
         <div id="activities-list">
@@ -21,7 +42,7 @@
         </div>
       </section>
 
-      <section id="signup-container">
+      <section id="signup-container" class="hidden">
         <h3>Sign Up for an Activity</h3>
         <form id="signup-form">
           <div class="form-group">

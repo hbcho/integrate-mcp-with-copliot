@@ -188,6 +188,15 @@ button:hover {
   border: 1px solid #bee5eb;
 }
 
+.secondary-button {
+  margin-left: 8px;
+  background-color: #5f6368;
+}
+
+.secondary-button:hover {
+  background-color: #45494d;
+}
+
 .hidden {
   display: none;
 }
