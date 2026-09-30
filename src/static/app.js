@@ -3,15 +3,82 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const signupContainer = document.getElementById("signup-container");
+  const authForm = document.getElementById("auth-form");
+  const authMessage = document.getElementById("auth-message");
+  const logoutButton = document.getElementById("logout-button");
+  let accessToken = null;
+  let currentUser = null;
+
+  function clearSession() {
+    accessToken = null;
+    currentUser = null;
+    signupContainer.classList.add("hidden");
+    logoutButton.classList.add("hidden");
+    activitiesList.innerHTML = "<p>Sign in to view activities.</p>";
+  }
+
+  function showAuthMessage(message, className) {
+    authMessage.textContent = message;
+    authMessage.className = className;
+    authMessage.classList.remove("hidden");
+  }
+
+  function handleUnauthorized() {
+    clearSession();
+    showAuthMessage("Your session has expired. Please sign in again.", "error");
+  }
+
+  async function refreshSession() {
+    const response = await fetch("/auth/refresh", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    if (!response.ok) return false;
+
+    const result = await response.json();
+    accessToken = result.access_token;
+    currentUser = result.user;
+    return true;
+  }
+
+  async function authenticatedFetch(url, options = {}) {
+    const sendRequest = () =>
+      fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+    let response = await sendRequest();
+    if (response.status === 401 && await refreshSession()) {
+      response = await sendRequest();
+    }
+    if (response.status === 401) handleUnauthorized();
+    return response;
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
+    if (!accessToken) {
+      activitiesList.innerHTML = "<p>Sign in to view activities.</p>";
+      return;
+    }
+
     try {
-      const response = await fetch("/activities");
+      const response = await authenticatedFetch("/activities");
+      if (response.status === 401) return;
+      if (!response.ok) throw new Error("Failed to load activities");
       const activities = await response.json();
+      const canManageActivities = ["teacher", "admin"].includes(currentUser?.role);
+      signupContainer.classList.toggle("hidden", !canManageActivities);
+      logoutButton.classList.remove("hidden");
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -30,7 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${canManageActivities ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Unregister ${email}">Remove</button>` : ""}</li>`
                   )
                   .join("")}
               </ul>
@@ -74,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const email = button.getAttribute("data-email");
 
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/activities/${encodeURIComponent(
           activity
         )}/unregister?email=${encodeURIComponent(email)}`,
@@ -82,6 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
           method: "DELETE",
         }
       );
+
+      if (response.status === 401) return;
 
       const result = await response.json();
 
@@ -111,6 +180,45 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Handle form submission
+  authForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+    const otpCode = document.getElementById("otp-code").value;
+
+    try {
+      const response = await fetch("/auth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, otp_code: otpCode || null }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        showAuthMessage(result.detail?.message || "Sign in failed.", "error");
+        return;
+      }
+
+      accessToken = result.access_token;
+      currentUser = result.user;
+      authForm.reset();
+      showAuthMessage(`Signed in as ${currentUser.username} (${currentUser.role}).`, "success");
+      await fetchActivities();
+    } catch (error) {
+      showAuthMessage("Unable to sign in. Please try again.", "error");
+      console.error("Error signing in:", error);
+    }
+  });
+
+  logoutButton.addEventListener("click", async () => {
+    try {
+      if (accessToken) await authenticatedFetch("/auth/logout", { method: "POST" });
+    } finally {
+      clearSession();
+      authMessage.classList.add("hidden");
+      messageDiv.classList.add("hidden");
+    }
+  });
+
   signupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -118,7 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const activity = document.getElementById("activity").value;
 
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/activities/${encodeURIComponent(
           activity
         )}/signup?email=${encodeURIComponent(email)}`,
@@ -126,6 +234,8 @@ document.addEventListener("DOMContentLoaded", () => {
           method: "POST",
         }
       );
+
+      if (response.status === 401) return;
 
       const result = await response.json();
 
@@ -156,5 +266,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initialize app
-  fetchActivities();
+  clearSession();
+  refreshSession()
+    .then((restored) => {
+      if (restored) fetchActivities();
+    })
+    .catch((error) => console.error("Error restoring session:", error));
 });

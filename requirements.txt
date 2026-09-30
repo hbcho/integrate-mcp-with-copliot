@@ -1,2 +1,5 @@
 fastapi
 uvicorn
+PyJWT[crypto]
+pwdlib[argon2]
+pyotp
